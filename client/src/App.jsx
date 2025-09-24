@@ -8,14 +8,31 @@ function formatPrice(cents) {
 function App() {
   const [products, setProducts] = useState([])
   const [cart, setCart] = useState({})
+  const [showCart, setShowCart] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [checkoutStep, setCheckoutStep] = useState('cart') // cart, shipping, payment, confirmation
+  
   const total = useMemo(() =>
     Object.entries(cart).reduce((sum, [id, qty]) => {
       const p = products.find(pr => pr.id === id)
       return sum + (p ? p.price * qty : 0)
     }, 0), [cart, products])
 
+  const cartItems = useMemo(() => 
+    Object.entries(cart)
+      .filter(([, qty]) => qty > 0)
+      .map(([id, qty]) => {
+        const product = products.find(p => p.id === id)
+        return product ? { ...product, quantity: qty } : null
+      })
+      .filter(Boolean), [cart, products])
+
   useEffect(() => {
-    fetch('/api/products').then(r => r.json()).then(setProducts).catch(console.error)
+    fetch('/api/products')
+      .then(r => r.json())
+      .then(setProducts)
+      .catch(console.error)
+      .finally(() => setLoading(false))
   }, [])
 
   function addToCart(id) {
@@ -26,56 +43,213 @@ function App() {
     setCart(prev => ({ ...prev, [id]: Math.max(0, qty) }))
   }
 
-  async function checkout() {
+  function removeFromCart(id) {
+    setCart(prev => {
+      const newCart = { ...prev }
+      delete newCart[id]
+      return newCart
+    })
+  }
+
+  async function processCheckout() {
     const items = Object.entries(cart)
       .filter(([, q]) => q > 0)
       .map(([id, quantity]) => ({ id, quantity }))
+    
     if (!items.length) return
-    const res = await fetch('/api/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items })
-    })
-    const data = await res.json()
-    alert(`Checkout total: ${formatPrice(data.total)}`)
+
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items })
+      })
+      const data = await res.json()
+      
+      // Simulate successful checkout
+      setCheckoutStep('confirmation')
+      setCart({})
+      
+      // In a real app, you'd redirect to payment processor
+      alert(`Order Total: ${formatPrice(data.total)}\n\nFor real orders, contact: parampateldev@gmail.com\nPayment via Zelle or Bank Transfer`)
+    } catch (error) {
+      alert('Checkout failed. Please try again.')
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <p>Loading ElectronX...</p>
+      </div>
+    )
   }
 
   return (
-    <div style={{ maxWidth: 1000, margin: '2rem auto', padding: '0 1rem' }}>
-      <h1>E‑Commerce Demo</h1>
-      <p style={{ color: '#64748b' }}>React + Express. Add items and checkout (demo only).</p>
+    <div className="electronx-app">
+      {/* Header */}
+      <header className="store-header">
+        <div className="header-content">
+          <div className="logo-section">
+            <h1 className="store-logo">⚡ ElectronX</h1>
+            <p className="store-tagline">Premium Electronics & Tech Solutions</p>
+          </div>
+          <div className="header-actions">
+            <button 
+              className="cart-button"
+              onClick={() => setShowCart(!showCart)}
+            >
+              <span className="cart-icon">🛒</span>
+              <span className="cart-count">{cartItems.length}</span>
+              <span className="cart-total">{formatPrice(total)}</span>
+            </button>
+          </div>
+        </div>
+      </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' }}>
-        {products.map(p => (
-          <div key={p.id} style={{ border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
-            <img src={p.image} alt={p.name} style={{ width: '100%', height: 140, objectFit: 'cover' }} />
-            <div style={{ padding: '0.75rem 1rem' }}>
-              <div style={{ fontWeight: 600 }}>{p.name}</div>
-              <div style={{ color: '#0f172a', margin: '0.25rem 0' }}>{formatPrice(p.price)}</div>
-              <button onClick={() => addToCart(p.id)} className="btn">Add to Cart</button>
+      {/* Hero Section */}
+      <section className="hero-section">
+        <div className="hero-content">
+          <h2>Discover Premium Electronics</h2>
+          <p>High-quality tech products with competitive prices and fast shipping</p>
+          <div className="hero-stats">
+            <div className="stat">
+              <span className="stat-number">500+</span>
+              <span className="stat-label">Products</span>
+            </div>
+            <div className="stat">
+              <span className="stat-number">24/7</span>
+              <span className="stat-label">Support</span>
+            </div>
+            <div className="stat">
+              <span className="stat-number">Free</span>
+              <span className="stat-label">Shipping</span>
             </div>
           </div>
-        ))}
-      </div>
+        </div>
+      </section>
 
-      <h2 style={{ marginTop: '2rem' }}>Cart</h2>
-      {Object.keys(cart).length === 0 && <p>No items yet.</p>}
-      {Object.entries(cart).filter(([, q]) => q > 0).map(([id, qty]) => {
-        const p = products.find(pr => pr.id === id)
-        if (!p) return null
-        return (
-          <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0.5rem 0' }}>
-            <div style={{ width: 120 }}>{p.name}</div>
-            <input type="number" min={0} value={qty} onChange={e => updateQty(id, Number(e.target.value))} />
-            <div>{formatPrice(p.price * qty)}</div>
+      {/* Products Grid */}
+      <main className="products-section">
+        <div className="section-header">
+          <h2>Featured Products</h2>
+          <p>Handpicked electronics for every need</p>
+        </div>
+        
+        <div className="products-grid">
+          {products.map(product => (
+            <div key={product.id} className="product-card">
+              <div className="product-image">
+                <img src={product.image} alt={product.name} />
+                <div className="product-badge">Best Seller</div>
+              </div>
+              <div className="product-info">
+                <h3 className="product-name">{product.name}</h3>
+                <p className="product-description">{product.description}</p>
+                <div className="product-price">
+                  <span className="current-price">{formatPrice(product.price)}</span>
+                  <span className="original-price">{formatPrice(product.price * 1.3)}</span>
+                  <span className="discount">Save 23%</span>
+                </div>
+                <div className="product-actions">
+                  <button 
+                    className="add-to-cart-btn"
+                    onClick={() => addToCart(product.id)}
+                  >
+                    Add to Cart
+                  </button>
+                  <button className="wishlist-btn">♡</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </main>
+
+      {/* Cart Sidebar */}
+      {showCart && (
+        <div className="cart-overlay" onClick={() => setShowCart(false)}>
+          <div className="cart-sidebar" onClick={e => e.stopPropagation()}>
+            <div className="cart-header">
+              <h3>Shopping Cart</h3>
+              <button 
+                className="close-cart"
+                onClick={() => setShowCart(false)}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="cart-items">
+              {cartItems.length === 0 ? (
+                <p className="empty-cart">Your cart is empty</p>
+              ) : (
+                cartItems.map(item => (
+                  <div key={item.id} className="cart-item">
+                    <img src={item.image} alt={item.name} className="cart-item-image" />
+                    <div className="cart-item-info">
+                      <h4>{item.name}</h4>
+                      <p>{formatPrice(item.price)}</p>
+                      <div className="quantity-controls">
+                        <button onClick={() => updateQty(item.id, item.quantity - 1)}>-</button>
+                        <span>{item.quantity}</span>
+                        <button onClick={() => updateQty(item.id, item.quantity + 1)}>+</button>
+                      </div>
+                    </div>
+                    <button 
+                      className="remove-item"
+                      onClick={() => removeFromCart(item.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+            
+            {cartItems.length > 0 && (
+              <div className="cart-footer">
+                <div className="cart-total">
+                  <span>Total: {formatPrice(total)}</span>
+                </div>
+                <button 
+                  className="checkout-btn"
+                  onClick={processCheckout}
+                >
+                  Proceed to Checkout
+                </button>
+                <p className="checkout-note">
+                  For payment: parampateldev@gmail.com<br/>
+                  Zelle or Bank Transfer accepted
+                </p>
+              </div>
+            )}
           </div>
-        )
-      })}
+        </div>
+      )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
-        <div style={{ fontWeight: 700 }}>Total: {formatPrice(total)}</div>
-        <button className="btn" onClick={checkout} disabled={total === 0}>Checkout</button>
-      </div>
+      {/* Footer */}
+      <footer className="store-footer">
+        <div className="footer-content">
+          <div className="footer-section">
+            <h4>ElectronX</h4>
+            <p>Your trusted source for premium electronics</p>
+          </div>
+          <div className="footer-section">
+            <h4>Contact</h4>
+            <p>Email: parampateldev@gmail.com</p>
+            <p>Phone: (555) 123-4567</p>
+          </div>
+          <div className="footer-section">
+            <h4>Payment Methods</h4>
+            <p>Zelle • Bank Transfer • PayPal</p>
+          </div>
+        </div>
+        <div className="footer-bottom">
+          <p>&copy; 2024 ElectronX. All rights reserved.</p>
+        </div>
+      </footer>
     </div>
   )
 }
